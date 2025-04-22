@@ -1,43 +1,64 @@
-<!-- <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" /> -->
-<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.5.2/animate.min.css"></link> -->
 <script setup lang="ts">
-// import { onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useMiniLiveIframe } from './dh_helper/miniLiveIframe'
-
-const {
-  iframeSrc,
-  iframeContainer,
-  iframeWidth,
-  iframeHeight,
-  onDragStart
-} = useMiniLiveIframe()
 // import { RouterLink, RouterView } from 'vue-router'
-// import HelloWorld from './components/HelloWorld.vue'
+import HelloWorld from './components/HelloWorld.vue'
 import UnityWebgl from 'unity-webgl'
 import UnityVue from 'unity-webgl/vue'
 // import { FabComponent as EjsFab } from '@syncfusion/ej2-vue-buttons'
+import ChatBox from './components/ChatBox.vue'
+import DigitalHuman from '@/dh_helper/controller.ts'
+import { getAndPlayAudio, playAudio } from '@/dh_helper/audio.ts'
+import MicRecorder from './assets/utils/MicRecorder'
 
+/*       数字人控制       */
+const { iframeSrc, iframeContainer, iframeWidth, iframeHeight, onDragStart } = useMiniLiveIframe()
 const unityContext = new UnityWebgl({
-  loaderUrl: 'https://academy-1258888325.cos.ap-chongqing.myqcloud.com/WebGL.loader.js',
-  dataUrl: 'https://academy-1258888325.cos.ap-chongqing.myqcloud.com/WebGL.data',
-  frameworkUrl: 'https://academy-1258888325.cos.ap-chongqing.myqcloud.com/WebGL.framework.js',
-  codeUrl: 'https://academy-1258888325.cos.ap-chongqing.myqcloud.com/WebGL.wasm',
+  loaderUrl: 'https://acacos-cdn.syan.wang/WebGL.loader.js',
+  dataUrl: 'https://acacos-cdn.syan.wang/WebGL.data',
+  frameworkUrl: 'https://acacos-cdn.syan.wang/WebGL.framework.js',
+  codeUrl: 'https://acacos-cdn.syan.wang/WebGL.wasm',
 }) // Check before release, if in need it could be a OSS/COS address
 
-// unityContext
-//   .on('progress', (p) => console.log('loading :', p))
-//   .on('mounted', () => console.log('unity mounted ...'))
-//   .on('debug', (msg) => console.log('unity debug', msg));
-
 unityContext.addUnityListener('gameStart', (msg) => {
-  alert(msg);
-  console.log('gameStart : ', msg);
-});
+  alert(msg)
+  console.log('gameStart : ', msg)
+})
+/// 和iframe通信
+const dh = ref()
+/*       聊天框相关控件       */
+const recorder = new MicRecorder()
+let message = ref('')
+const tab = ref('one')
+const isRecording = ref(false)
+const startRecording = async () => {
+  console.log('startRecording')
+  isRecording.value = true
+  // 调用麦克风
+  await recorder.startRecording()
+}
+const stopRecording = async () => {
+  console.log('stopRecording')
+  // 添加停止录音的逻辑
+  isRecording.value = false
+  await recorder.stopRecording()
+  console.log('Recording File: ', recorder.recordingFile)
+}
 
-// function sendMessage() {
-//   unityContext.sendMessage('GameUI', 'ReceiveRole', 'Tanya');
-// }
-
+const textFieldLoading = ref(false)
+const sendTextMessage = async () => {
+  console.log('sendTextMessage')
+  if (message.value !== '') {
+    // 发送消息
+    console.log('发送消息:', message.value)
+    message.value = '' // 清空输入框
+    textFieldLoading.value = true
+    console.log(dh.value)
+    const dhIframe = dh.value
+    await getAndPlayAudio(message.value, dhIframe)
+    textFieldLoading.value = false
+  }
+}
 </script>
 
 <style>
@@ -48,61 +69,74 @@ unityContext.addUnityListener('gameStart', (msg) => {
 </style>
 
 <template>
-
-  <div style="height: 100%; width: 100%; position: absolute; top: 0; left: 0">
-    <UnityVue :unity="unityContext" tabindex="0" />
+    Unity视窗 fixed
+    <div style="height: 100%; width: 100%; position: absolute; top: 0; left: 0">
+      <UnityVue :unity="unityContext" tabindex="0" />
+    </div>
+  <!--  数字人窗口  -->
+  <div ref="iframeContainer" class="draggable-container">
+    <div class="drag-overlay" @mousedown="onDragStart" @touchstart="onDragStart"></div>
+    <iframe
+      ref="dh"
+      frameborder="0"
+      :src="iframeSrc"
+      :style="{ width: iframeWidth + 'px', height: iframeHeight + 'px' }"
+    >
+    </iframe>
   </div>
-
-<div ref="iframeContainer"  class="draggable-container">
-  <div class="drag-overlay" @mousedown="onDragStart" @touchstart="onDragStart"></div>
-  <iframe
-    frameborder="0"
-    :src="iframeSrc"
-    :style="{width: iframeWidth + 'px', height: iframeHeight + 'px'}">
-  </iframe>
-<!--  <div class="drag-handle"   style="position: absolute; top: 0; left: 0; width: 100%; height: 30px; cursor: move; z-index: 10000; background: rgba(0,0,0,0.1);">-->
-
-<!--  </div>-->
-</div>
-
-  <v-fab
-    :absolute="true"
-    :color="'primary'"
-    :location="'right bottom'"
-    size="large"
-    id="fab"
-    icon
-    style="z-index: 9999; margin-right: 12px; margin-top: -15px"
+  <!--  聊天窗口  -->
+  <v-card
+    class="chat-box"
+    width="90%"
+    style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%)"
   >
-<!--    :key="'absolute'"-->
+    <v-alert style="z-index: 10000" v-if="isRecording" variant="tonal" type="warning" height="50px">
+      <span style="margin-left: 10px">说话中...</span>
+    </v-alert>
+    <v-tabs v-model="tab" bg-color="primary" height="30px">
+      <v-tab value="one">语音</v-tab>
+      <v-tab value="two">文字</v-tab>
+    </v-tabs>
 
-<!--    name="fab"-->
-
-<!--  />-->
-    <v-icon>{{ 'mdi-crown' }}</v-icon>
-    <v-speed-dial :location="'top center'" :transition="'scale-transition'" activator="parent">
-      <v-btn key="1" color="success" icon>
-        <v-icon size="24">$success</v-icon>
-      </v-btn>
-
-      <v-btn key="2" color="info" icon>
-        <v-icon size="24">$info</v-icon>
-      </v-btn>
-
-      <v-btn key="3" color="warning" icon>
-        <v-icon size="24">$warning</v-icon>
-      </v-btn>
-
-      <v-btn key="4" color="error" icon>
-        <v-icon size="24">$error</v-icon>
-      </v-btn>
-    </v-speed-dial>
-  </v-fab>
+    <v-card-text>
+      <v-tabs-window v-model="tab">
+        <!--语音输入-->
+        <v-tabs-window-item value="one">
+          <v-btn
+            @mousedown="startRecording"
+            @mouseup="stopRecording"
+            @touchstart="startRecording"
+            @touchend="stopRecording"
+            style="width: 100%"
+            variant="outlined"
+          >
+            按住说话
+          </v-btn>
+        </v-tabs-window-item>
+        <!--文字输入-->
+        <v-tabs-window-item value="two">
+          <v-card>
+            <v-text-field
+              v-model="message"
+              label="请输入..."
+              variant="filled"
+              auto-grow
+              :loading="textFieldLoading"
+            ></v-text-field>
+            <v-btn style="width: 100%" @click="sendTextMessage">发送</v-btn>
+          </v-card>
+        </v-tabs-window-item>
+      </v-tabs-window>
+    </v-card-text>
+  </v-card>
 </template>
+
 <style scoped>
 .draggable-container {
-  position: fixed;
-  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  position: absolute;
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
   border-radius: 12px;
   overflow: hidden;
   background-color: white;
@@ -116,14 +150,28 @@ unityContext.addUnityListener('gameStart', (msg) => {
   cursor: grabbing;
   opacity: 0.95;
 }
+
 /* 👇 遮罩层，透明且覆盖整个 iframe 区域，负责触发拖动事件 */
 .drag-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: fixed;
+  top: 0px;
+  left: 0px;
   width: 100%;
   height: 100%;
   cursor: grab;
   z-index: 2;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden; /* 关键：防止多余滚动 */
+}
+
+input,
+textarea,
+select {
+  font-size: 16px; /* iOS Safari 自动放大的临界点 */
 }
 </style>

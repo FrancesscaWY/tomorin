@@ -7,13 +7,25 @@ export function useMiniLiveIframe() {
   const iframeHeight = ref(180)
 
   let isDragging = false
-  let startX = 0, startY = 0
-  let initialLeft = 0, initialTop = 0
+  let startX = 0,
+    startY = 0
+  let initialLeft = 0,
+    initialTop = 0
 
-  const getClientX = (e: MouseEvent | TouchEvent) =>
-    e instanceof TouchEvent ? e.touches[0].clientX : e.clientX
-  const getClientY = (e: MouseEvent | TouchEvent) =>
-    e instanceof TouchEvent ? e.touches[0].clientY : e.clientY
+  const getClientX = (e: MouseEvent | TouchEvent) => {
+    if (window.TouchEvent === undefined) return (e as MouseEvent).clientX
+    if (window.MouseEvent === undefined) return (e as TouchEvent).touches[0].clientX
+    if (e instanceof MouseEvent) return e.clientX
+    if (e instanceof TouchEvent) return e.touches[0].clientX
+    throw Error('got e has no supported type.')
+  }
+  const getClientY = (e: MouseEvent | TouchEvent) => {
+    if (window.TouchEvent === undefined) return (e as MouseEvent).clientY
+    if (window.MouseEvent === undefined) return (e as TouchEvent).touches[0].clientY
+    if (e instanceof MouseEvent) return e.clientY
+    if (e instanceof TouchEvent) return e.touches[0].clientY
+    throw Error('got e has no supported type.')
+  }
 
   const onDragStart = (e: MouseEvent | TouchEvent) => {
     const el = iframeContainer.value
@@ -53,6 +65,34 @@ export function useMiniLiveIframe() {
     document.removeEventListener('mouseup', onDragEnd)
     document.removeEventListener('touchmove', onDragging)
     document.removeEventListener('touchend', onDragEnd)
+
+    const el = iframeContainer.value
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      const outOfBounds =
+        rect.left < 0 ||
+        rect.top < 0 ||
+        rect.right > window.innerWidth ||
+        rect.bottom > window.innerHeight
+
+      if (outOfBounds) {
+        const el = iframeContainer.value
+        if (el) {
+          const rect = el.getBoundingClientRect()
+          const margin = 10 // Distance from the edge
+          const newTop = Math.min(
+            Math.max(rect.top, margin),
+            window.innerHeight - rect.height - margin,
+          )
+          const newLeft = Math.min(
+            Math.max(rect.left, margin),
+            window.innerWidth - rect.width - margin,
+          )
+          el.style.top = `${newTop}px`
+          el.style.left = `${newLeft}px`
+        }
+      }
+    }
   }
 
   const handleMessage = (event: MessageEvent) => {
@@ -66,8 +106,8 @@ export function useMiniLiveIframe() {
     const el = iframeContainer.value
     if (!el) return
     el.style.position = 'fixed'
-    el.style.top = '100px'
-    el.style.left = '100px'
+    el.style.top = '40px'
+    el.style.left = '20px'
     el.style.zIndex = '9999'
 
     window.addEventListener('message', handleMessage)
@@ -76,7 +116,6 @@ export function useMiniLiveIframe() {
   onUnmounted(() => {
     window.removeEventListener('message', handleMessage)
   })
-
 
   onUnmounted(() => {
     // remove any future message or event listeners if needed
@@ -87,6 +126,6 @@ export function useMiniLiveIframe() {
     iframeContainer,
     iframeWidth,
     iframeHeight,
-    onDragStart
+    onDragStart,
   }
 }
